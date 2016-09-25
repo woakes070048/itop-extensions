@@ -3585,6 +3585,60 @@
 				</field>
 			</fields>
 			<methods>
+				<method id="updateContacts" _delta="define">
+					<static>false</static>
+					<access>public</access>
+					<type>Custom</type>
+					<code><![CDATA[
+						public function updateContacts($IsDelete=false)
+						{
+							// 自动更新applicationsolution的contacts字段
+							$sAppId = $this->Get('applicationsolution_id');
+							if($sAppId > 0) 
+							{    
+								$sOql = "SELECT lnkContactToApplicationSolution AS l WHERE l.applicationsolution_id=:applicationsolution_id";
+								$nSearch = DBObjectSearch::FromOQL_AllData($sOql);
+								$oSet = new DBObjectSet($nSearch, array(), array('applicationsolution_id' => $sAppId));
+								$oArray = $oSet->ToArrayOfValues();
+								$contacts = array();
+								foreach($oArray as $v)
+								{    
+									$name = preg_replace("/@.*/","",$v['l.contact_email']);
+									$phone = $v['l.contact_phone'];
+									$item = "$name($phone)";
+									array_push($contacts,$item);
+								}
+								$aCurrent = preg_replace("/@.*/", "", $this->Get("contact_email")) . "(" . $this->Get("contact_phone") . ")";
+								if($IsDelete)
+								{
+									$newcontacts = array();
+									foreach($contacts as $v)
+									{
+										if($v == $aCurrent)
+										{
+											continue;
+										}
+										array_push($newcontacts, $v);
+									}
+									//die(json_encode($newcontacts));
+									$contacts = $newcontacts;
+								}else
+								{
+									array_push($contacts, $aCurrent);
+								}
+								
+								array_unique($contacts);
+								$contacts_str = implode(",", $contacts);
+								//die($contacts_str);
+								
+								// 使用API修改对象（当前登录用户可能没有某些类的修改权限）
+								$iTopAPI = new iTopClient();
+								$iTopAPI->coreUpdate("ApplicationSolution", $sAppId, array("contacts"=>$contacts_str));
+							}   						
+						}
+					]]>
+					</code>
+				</method>			
 				<method id="ReloadAndDisplayCustom" _delta="define">
 					<static>false</static>
 					<access>public</access>
@@ -3659,7 +3713,10 @@
 					if ($oSet->Count() > 0)
 					{
 						$this->m_aCheckIssues[] = Dict::Format("Class:lnkContactToApplicationSolution/Error:ThisLnkAlreadyExists", $friendlyname);
-					}				
+					}else
+					{
+						self::updateContacts();
+					}
 				}
 			}
 		}]]>
@@ -3686,7 +3743,18 @@
   	} 
 			]]></code>
 				</method>
-
+				<method id="AfterDelete" _delta="define">
+					<static>false</static>
+					<access>protected</access>
+					<type>Overload-DBObject</type>
+					<code><![CDATA[	   
+					protected function AfterDelete()
+					{
+						parent::AfterDelete();
+						self::updateContacts(true);
+					} 
+			]]></code>
+				</method>
 			</methods>
 			<presentation>
 				<details>
